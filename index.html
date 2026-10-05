@@ -91,6 +91,8 @@
       width: 65px;
       height: 65px;
       object-fit: contain;
+      /* 選択画面の画像を明るく補正（125%の明るさ） */
+      filter: brightness(1.25) contrast(1.05);
     }
 
     /* ボタンデザイン */
@@ -212,8 +214,13 @@
     images[src] = img;
   });
 
-  // 安全に画像を描画する関数（読み込み失敗時もゲームを止めない）
-  function drawImageSafe(img, x, y, width, height, fallbackColor = '#ff4444') {
+  // 安全＆明るさ補正付きの画像描画関数
+  // brightnessMultiplier: 1.0(標準), 1.25(25%明るく), 1.4(40%明るく)
+  function drawImageSafe(img, x, y, width, height, fallbackColor = '#ff4444', brightnessMultiplier = 1.25) {
+    ctx.save();
+    // 明るさとコントラストを少し上げてくっきり見せる
+    ctx.filter = `brightness(${brightnessMultiplier}) contrast(1.05)`;
+
     if (img && img.complete && img.naturalWidth !== 0) {
       try {
         ctx.drawImage(img, x, y, width, height);
@@ -225,6 +232,7 @@
       ctx.fillStyle = fallbackColor;
       ctx.fillRect(x, y, width, height);
     }
+    ctx.restore();
   }
 
   // ゲームステート
@@ -275,16 +283,14 @@
     gameLoop();
   }
 
-  // ジャンプ処理（スコアは障害物回避時に加算）
+  // ジャンプ処理
   function handleJump() {
     if (isGameOver) return;
 
     if (player.jumpCount === 0) {
-      // 1回目のジャンプ
       player.vy = player.jumpPower;
       player.jumpCount = 1;
     } else if (player.jumpCount === 1) {
-      // ダブルジャンプ
       player.vy = player.jumpPower * 0.9;
       player.jumpCount = 2;
     }
@@ -297,7 +303,7 @@
   // 障害物のランダム生成
   function spawnObstacle() {
     const randomSrc = obstacleSources[Math.floor(Math.random() * obstacleSources.length)];
-    const isBig = Math.random() < 0.25; // 25%の確率で大きい障害物
+    const isBig = Math.random() < 0.25;
     const baseSize = 45;
     const width = isBig ? baseSize * 1.5 : baseSize;
     const height = isBig ? baseSize * 1.6 : baseSize;
@@ -309,7 +315,7 @@
       height: height,
       src: randomSrc,
       isBig: isBig,
-      passed: false // 回避成功フラグ
+      passed: false
     });
   }
 
@@ -334,8 +340,8 @@
       player.jumpCount = 0;
     }
 
-    // プレイヤー画像描画
-    drawImageSafe(images[selectedRunnerSrc], player.x, player.y, player.width, player.height, '#333333');
+    // プレイヤー画像描画（明るさ倍率1.25で少し明るく表示）
+    drawImageSafe(images[selectedRunnerSrc], player.x, player.y, player.width, player.height, '#333333', 1.25);
 
     // 障害物の移動と描画
     obstacleTimer++;
@@ -349,8 +355,8 @@
       const obs = obstacles[i];
       obs.x -= gameSpeed;
 
-      // 障害物の安全描画
-      drawImageSafe(images[obs.src], obs.x, obs.y, obs.width, obs.height, '#ff4444');
+      // 障害物画像描画（同じく明るく補正）
+      drawImageSafe(images[obs.src], obs.x, obs.y, obs.width, obs.height, '#ff4444', 1.25);
 
       // 当たり判定
       const padding = 6;
@@ -367,7 +373,7 @@
       // 回避成功判定（障害物を通り過ぎたら得点加算）
       if (!obs.passed && obs.x + obs.width < player.x) {
         obs.passed = true;
-        score += obs.isBig ? 3 : 1; // 通常障害物回避で1点、大障害物回避で3点
+        score += obs.isBig ? 3 : 1;
         updateScoreDisplay();
       }
 
