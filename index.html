@@ -59,7 +59,18 @@
     h1 {
       font-size: 22px;
       color: #333;
-      margin-bottom: 24px;
+      margin-bottom: 8px;
+    }
+
+    /* 最高記録表示 */
+    .high-score-tag {
+      font-size: 16px;
+      font-weight: bold;
+      color: #ff6b6b;
+      background: #ffe3e3;
+      padding: 6px 16px;
+      border-radius: 20px;
+      margin-bottom: 20px;
     }
 
     /* キャラクター選択画面 */
@@ -88,8 +99,10 @@
       border-color: #ff6b6b;
     }
     .char-card img {
-      width: 65px;
-      height: 65px;
+      max-width: 75px;
+      max-height: 75px;
+      width: auto;
+      height: auto;
       object-fit: contain;
       filter: brightness(1.25) contrast(1.05);
     }
@@ -170,6 +183,7 @@
   <!-- 1. キャラクター選択画面 -->
   <div id="select-screen" class="screen">
     <h1>はしるひとをえらんでね</h1>
+    <div id="high-score-select" class="high-score-tag">さいこうきろく: 0点</div>
     <div class="char-container">
       <div class="char-card" onclick="selectCharacter('image/run1.png')">
         <img src="image/run1.png" alt="ランナー1">
@@ -186,7 +200,8 @@
   <!-- 2. リザルト画面 -->
   <div id="result-screen" class="screen hidden">
     <h1>ゲームオーバー</h1>
-    <p id="final-score" style="font-size: 26px; margin-bottom: 20px; font-weight: bold; color: #333;">スコア: 0</p>
+    <p id="final-score" style="font-size: 24px; font-weight: bold; color: #333; margin-bottom: 6px;">スコア: 0</p>
+    <p id="high-score-result" style="font-size: 16px; color: #ff6b6b; font-weight: bold; margin-bottom: 20px;">さいこうきろく: 0点</p>
     <button class="btn" onclick="retryGame()">もう一度</button>
     <button class="btn btn-secondary" onclick="backToSelect()">はしるひとをえらぶ</button>
   </div>
@@ -213,6 +228,15 @@
     images[src] = img;
   });
 
+  // 画像のアスペクト比（幅/高さ）を取得する補助関数
+  function getAspectRatio(src) {
+    const img = images[src];
+    if (img && img.complete && img.naturalHeight > 0) {
+      return img.naturalWidth / img.naturalHeight;
+    }
+    return 1.0;
+  }
+
   // 安全＆明るさ補正付きの画像描画関数
   function drawImageSafe(img, x, y, width, height, fallbackColor = '#ff4444', brightnessMultiplier = 1.25) {
     ctx.save();
@@ -232,6 +256,14 @@
     ctx.restore();
   }
 
+  // ハイスコアの取得・更新機能（ブラウザに保存）
+  let highScore = parseInt(localStorage.getItem('pwa_runner_highscore') || '0', 10);
+  function updateHighScoreDisplays() {
+    document.getElementById('high-score-select').innerText = `さいこうきろく: ${highScore}点`;
+    document.getElementById('high-score-result').innerText = `さいこうきろく: ${highScore}点`;
+  }
+  updateHighScoreDisplays();
+
   // ゲームステート
   let selectedRunnerSrc = '';
   let score = 0;
@@ -243,25 +275,25 @@
   let player = {
     x: 80,
     y: groundY - 60,
+    baseHeight: 60,
     width: 50,
     height: 60,
     vy: 0,
     gravity: 0.65,
     jumpPower: -13,
-    jumpCount: 0 // 0:接地, 1:ジャンプ1回目, 2:ダブルジャンプ
+    jumpCount: 0
   };
 
   let obstacles = [];
   let obstacleTimer = 0;
-  let nextObstacleInterval = 100; // 次の障害物が出るまでの待ち時間
+  let nextObstacleInterval = 100;
   let gameSpeed = 5;
 
-  // スコア（15点ごと）に応じた障害物の出現間隔を計算する関数
+  // 10点ごとに障害物の出現間隔を短縮
   function getNextInterval() {
-    const level = Math.floor(score / 15); // 15点ごとにレベル1上昇
-    // レベルが上がるほど出現間隔の最小値・最大値が狭くなる
-    const minInterval = Math.max(40, 95 - level * 10);
-    const maxInterval = Math.max(65, 135 - level * 12);
+    const level = Math.floor(score / 10); // 10点ごとにレベル1上昇
+    const minInterval = Math.max(38, 90 - level * 9);
+    const maxInterval = Math.max(60, 130 - level * 11);
     return Math.floor(Math.random() * (maxInterval - minInterval + 1)) + minInterval;
   }
 
@@ -281,6 +313,11 @@
     obstacles = [];
     obstacleTimer = 0;
     nextObstacleInterval = getNextInterval();
+
+    // プレイヤーのサイズを元画像のアスペクト比に基づいて補正
+    const aspect = getAspectRatio(selectedRunnerSrc);
+    player.height = player.baseHeight;
+    player.width = player.height * aspect;
 
     player.y = groundY - player.height;
     player.vy = 0;
@@ -308,21 +345,37 @@
     document.getElementById('score-display').innerText = `スコア: ${score}`;
   }
 
-  // 障害物のランダム生成
+  // 障害物のランダム生成（地上・空中・大小）
   function spawnObstacle() {
     const randomSrc = obstacleSources[Math.floor(Math.random() * obstacleSources.length)];
-    const isBig = Math.random() < 0.25; // 25%の確率で大きい障害物
-    const baseSize = 45;
-    const width = isBig ? baseSize * 1.5 : baseSize;
-    const height = isBig ? baseSize * 1.6 : baseSize;
+    const aspect = getAspectRatio(randomSrc);
+
+    // 20%の確率で空中障害物（ジャンプせず立っていれば頭上を通り抜ける）
+    const isAir = Math.random() < 0.20;
+    // 空中でない場合は25%の確率で大きな障害物
+    const isBig = !isAir && Math.random() < 0.25;
+
+    const baseHeight = isBig ? 65 : 42;
+    const height = baseHeight;
+    const width = height * aspect; // 元画像のアスペクト比に合わせて幅を決定
+
+    let y;
+    if (isAir) {
+      // プレイヤーの頭上を通る高さ（立った状態の頭頂より少し上）
+      y = groundY - player.height - height - 12;
+    } else {
+      // 地上障害物
+      y = groundY - height;
+    }
 
     obstacles.push({
       x: canvas.width,
-      y: groundY - height,
+      y: y,
       width: width,
       height: height,
       src: randomSrc,
       isBig: isBig,
+      isAir: isAir, // 空中障害物フラグ
       passed: false
     });
   }
@@ -351,17 +404,17 @@
     // プレイヤー画像描画
     drawImageSafe(images[selectedRunnerSrc], player.x, player.y, player.width, player.height, '#333333', 1.25);
 
-    // 障害物のタイマー更新とランダム出現処理
+    // 障害物のタイマー更新と出現処理
     obstacleTimer++;
     if (obstacleTimer >= nextObstacleInterval) {
       spawnObstacle();
       obstacleTimer = 0;
-      nextObstacleInterval = getNextInterval(); // 次の障害物までの間隔を再計算
+      nextObstacleInterval = getNextInterval();
     }
 
-    // スコア15点ごとにスピードも緩やかにアップ
-    const currentLevel = Math.floor(score / 15);
-    gameSpeed = 5 + Math.min(5, currentLevel * 0.7);
+    // 10点ごとにスピードアップ
+    const currentLevel = Math.floor(score / 10);
+    gameSpeed = 5 + Math.min(5.5, currentLevel * 0.6);
 
     for (let i = obstacles.length - 1; i >= 0; i--) {
       const obs = obstacles[i];
@@ -371,7 +424,7 @@
       drawImageSafe(images[obs.src], obs.x, obs.y, obs.width, obs.height, '#ff4444', 1.25);
 
       // 当たり判定
-      const padding = 6;
+      const padding = 5;
       if (
         player.x + padding < obs.x + obs.width - padding &&
         player.x + player.width - padding > obs.x + padding &&
@@ -382,11 +435,13 @@
         return;
       }
 
-      // 回避成功判定（障害物を通り過ぎたら得点加算）
+      // 通過判定（地上障害物は得点加算、空中障害物は得点なし）
       if (!obs.passed && obs.x + obs.width < player.x) {
         obs.passed = true;
-        score += obs.isBig ? 3 : 1;
-        updateScoreDisplay();
+        if (!obs.isAir) {
+          score += obs.isBig ? 3 : 1; // 通常障害物: 1点, 大障害物: 3点
+          updateScoreDisplay();
+        }
       }
 
       // 画面外の障害物を消去
@@ -405,6 +460,14 @@
     isGameOver = true;
     document.getElementById('ui-layer').classList.add('hidden');
     document.getElementById('final-score').innerText = `スコア: ${score}`;
+
+    // ハイスコアの更新確認
+    if (score > highScore) {
+      highScore = score;
+      localStorage.setItem('pwa_runner_highscore', highScore.toString());
+      updateHighScoreDisplays();
+    }
+
     document.getElementById('result-screen').classList.remove('hidden');
   }
 
@@ -417,6 +480,7 @@
 
   // キャラクター選択に戻る
   function backToSelect() {
+    updateHighScoreDisplays();
     document.getElementById('result-screen').classList.add('hidden');
     document.getElementById('select-screen').classList.remove('hidden');
   }
