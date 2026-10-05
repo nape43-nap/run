@@ -248,6 +248,17 @@
     'image/run1.png', 'image/IMG_5616.png', 'image/run3.png'
   ];
 
+  // カラフルな障害物用カラーパレット
+  const obstacleColors = [
+    '#ff4757', // レッド
+    '#ffa502', // オレンジ
+    '#eccc68', // イエロー
+    '#2ed573', // グリーン
+    '#1e90ff', // ブルー
+    '#9b59b6', // パープル
+    '#ff6b81'  // ピンク
+  ];
+
   // 画像の事前読み込み
   [...obstacleSources, ...runnerSources].forEach(src => {
     const img = new Image();
@@ -280,6 +291,25 @@
       ctx.fillStyle = fallbackColor;
       ctx.fillRect(x, y, width, height);
     }
+    ctx.restore();
+  }
+
+  // 地面の草を描画する関数
+  function drawGrass(x, y) {
+    ctx.save();
+    ctx.fillStyle = '#4CAF50';
+    // 中央の葉
+    ctx.beginPath();
+    ctx.ellipse(x, y - 8, 3, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // 左の葉
+    ctx.beginPath();
+    ctx.ellipse(x - 4, y - 6, 2.5, 7, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    // 右の葉
+    ctx.beginPath();
+    ctx.ellipse(x + 4, y - 6, 2.5, 7, 0.4, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 
@@ -316,6 +346,10 @@
   let obstacleTimer = 0;
   let nextObstacleInterval = 100;
   let gameSpeed = 5;
+
+  // 草の装飾管理
+  let grasses = [];
+  let grassTimer = 0;
 
   // 10点ごとに障害物の出現間隔を短縮
   function getNextInterval() {
@@ -355,6 +389,12 @@
     obstacleTimer = 0;
     nextObstacleInterval = getNextInterval();
 
+    // 草の初期化（スタート時から画面上にいくつか配置）
+    grasses = [];
+    for (let x = 50; x < canvas.width; x += 90 + Math.random() * 50) {
+      grasses.push({ x: x, y: groundY + 8 });
+    }
+
     // プレイヤーのサイズを元画像のアスペクト比に基づいて補正
     const aspect = getAspectRatio(selectedRunnerSrc);
     player.height = player.baseHeight;
@@ -386,9 +426,10 @@
     document.getElementById('score-display').innerText = `スコア: ${score}`;
   }
 
-  // 障害物のランダム生成（地上・空中・大小）
+  // 障害物のランダム生成（地上・空中・大小・ランダムカラー）
   function spawnObstacle() {
     const randomSrc = obstacleSources[Math.floor(Math.random() * obstacleSources.length)];
+    const randomColor = obstacleColors[Math.floor(Math.random() * obstacleColors.length)];
     const aspect = getAspectRatio(randomSrc);
 
     // 20%の確率で空中障害物（ジャンプせず立っていれば頭上を通り抜ける）
@@ -415,6 +456,7 @@
       width: width,
       height: height,
       src: randomSrc,
+      color: randomColor, // ランダムな色を設定
       isBig: isBig,
       isAir: isAir,
       passed: false
@@ -430,6 +472,30 @@
     ctx.fillRect(0, 0, canvas.width, groundY);
     ctx.fillStyle = '#8FBC8F';
     ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+
+    // 10点ごとにスピードアップ計算＆「スピードアップ！」表示
+    const currentLevel = Math.floor(score / 10);
+    if (currentLevel > lastSpeedLevel) {
+      lastSpeedLevel = currentLevel;
+      triggerSpeedUpNotice();
+    }
+    gameSpeed = 5 + Math.min(5.5, currentLevel * 0.6);
+
+    // 地面の草の移動と描画
+    grassTimer++;
+    if (grassTimer > 18) {
+      grasses.push({ x: canvas.width + Math.random() * 20, y: groundY + 8 });
+      grassTimer = 0;
+    }
+
+    for (let i = grasses.length - 1; i >= 0; i--) {
+      const g = grasses[i];
+      g.x -= gameSpeed;
+      drawGrass(g.x, g.y);
+      if (g.x < -20) {
+        grasses.splice(i, 1);
+      }
+    }
 
     // プレイヤーの物理移動
     player.vy += player.gravity;
@@ -453,20 +519,12 @@
       nextObstacleInterval = getNextInterval();
     }
 
-    // 10点ごとにスピードアップ計算＆「スピードアップ！」表示
-    const currentLevel = Math.floor(score / 10);
-    if (currentLevel > lastSpeedLevel) {
-      lastSpeedLevel = currentLevel;
-      triggerSpeedUpNotice();
-    }
-    gameSpeed = 5 + Math.min(5.5, currentLevel * 0.6);
-
     for (let i = obstacles.length - 1; i >= 0; i--) {
       const obs = obstacles[i];
       obs.x -= gameSpeed;
 
-      // 障害物画像描画
-      drawImageSafe(images[obs.src], obs.x, obs.y, obs.width, obs.height, '#ff4444', 1.25);
+      // 障害物画像描画（ランダムカラー付き）
+      drawImageSafe(images[obs.src], obs.x, obs.y, obs.width, obs.height, obs.color, 1.25);
 
       // 当たり判定
       const padding = 5;
