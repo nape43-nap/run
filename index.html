@@ -242,7 +242,7 @@
   const images = {};
   const obstacleSources = [
     'image/sho1.png', 'image/sho2.png', 'image/sho3.png',
-    'image/sho4.png', 'image/sho5.png', 'image/sho6.png'
+    'image/sho4.png', 'image/sho5.png', 'image/IMG_5618.png', 'image/IMG_5622.png'
   ];
   const runnerSources = [
     'image/run1.png', 'image/IMG_5616.png', 'image/run3.png'
@@ -426,27 +426,25 @@
     document.getElementById('score-display').innerText = `スコア: ${score}`;
   }
 
-  // 障害物のランダム生成（地上・空中・大小・ランダムカラー）
+  // 障害物のランダム生成（地上・空中・大小・ランダムカラー・回転情報）
   function spawnObstacle() {
     const randomSrc = obstacleSources[Math.floor(Math.random() * obstacleSources.length)];
     const randomColor = obstacleColors[Math.floor(Math.random() * obstacleColors.length)];
     const aspect = getAspectRatio(randomSrc);
 
-    // 20%の確率で空中障害物（ジャンプせず立っていれば頭上を通り抜ける）
+    // 20%の確率で空中障害物
     const isAir = Math.random() < 0.20;
     // 空中でない場合は25%の確率で大きな障害物
     const isBig = !isAir && Math.random() < 0.25;
 
     const baseHeight = isBig ? 65 : 42;
     const height = baseHeight;
-    const width = height * aspect; // 元画像のアスペクト比に合わせて幅を決定
+    const width = height * aspect;
 
     let y;
     if (isAir) {
-      // プレイヤーの頭上を通る高さ
       y = groundY - player.height - height - 12;
     } else {
-      // 地上障害物
       y = groundY - height;
     }
 
@@ -456,10 +454,11 @@
       width: width,
       height: height,
       src: randomSrc,
-      color: randomColor, // ランダムな色を設定
+      color: randomColor,
       isBig: isBig,
       isAir: isAir,
-      passed: false
+      passed: false,
+      angle: 0 // 回転角度の初期化
     });
   }
 
@@ -523,8 +522,20 @@
       const obs = obstacles[i];
       obs.x -= gameSpeed;
 
-      // 障害物画像描画（ランダムカラー付き）
-      drawImageSafe(images[obs.src], obs.x, obs.y, obs.width, obs.height, obs.color, 1.25);
+      // IMG_5622.png の場合は回転させる
+      if (obs.src === 'image/IMG_5622.png') {
+        obs.angle = (obs.angle || 0) - gameSpeed * 0.03; // 左に転がる回転
+
+        ctx.save();
+        // 画像の中心点へ移動して回転
+        ctx.translate(obs.x + obs.width / 2, obs.y + obs.height / 2);
+        ctx.rotate(obs.angle);
+        drawImageSafe(images[obs.src], -obs.width / 2, -obs.height / 2, obs.width, obs.height, obs.color, 1.25);
+        ctx.restore();
+      } else {
+        // 通常の障害物描画
+        drawImageSafe(images[obs.src], obs.x, obs.y, obs.width, obs.height, obs.color, 1.25);
+      }
 
       // 当たり判定
       const padding = 5;
